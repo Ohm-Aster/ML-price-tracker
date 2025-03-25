@@ -3,14 +3,20 @@ from bs4 import BeautifulSoup
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import time
+import json
+import os
 
 # Configuración de la API de Google Sheets
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-CREDENTIALS_FILE = "credentials.json"  # Asegúrate de que este archivo existe
+# validar existencia
+#CREDENTIALS_FILE = "credentials.json"  
+CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS")
+
 SPREADSHEET_NAME = "resultados tracking"
 
 # Autenticación con Google Sheets
-credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, SCOPES)
+#credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, SCOPES)
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(CREDENTIALS_JSON), SCOPES)
 client = gspread.authorize(credentials)
 spreadsheet = client.open(SPREADSHEET_NAME).sheet1
 
