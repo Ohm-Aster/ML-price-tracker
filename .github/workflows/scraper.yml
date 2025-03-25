@@ -3,6 +3,7 @@ name: Ejecutar scraper cada 3 horas
 on:
   schedule:
     - cron: "0 */3 * * *"  # Ejecuta cada 3 horas
+  workflow_dispatch:  # Permite ejecución manual
 
 jobs:
   run_script:
@@ -19,10 +20,16 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      - name: Mostrar hora actual (Debug)
+        run: date
+
       - name: Configurar credenciales
-        run: echo "$GOOGLE_CREDENTIALS" > credentials.json
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS }}' | base64 --decode > credentials.json
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - name: Verificar archivo de credenciales (Debug)
+        run: cat credentials.json || echo "El archivo no se generó correctamente"
 
       - name: Ejecutar el script
         run: python scraper.py
