@@ -22,7 +22,7 @@ spreadsheet = client.open(SPREADSHEET_NAME).sheet1
 
 # Lista de productos en Mercado Libre (URLS)
 products = [
-    {"name": "Escritorio 1.2m 2 cajones", "url": "https://articulo.mercadolibre.com.mx/MLM-3561782562-escritorio-de-oficina-modernos-minimalista-gamer-12m-2cajon-_JM"},
+    {"name": "Escritorio Negro en L", "url": "https://articulo.mercadolibre.com.mx/MLM-2008013683-escritorio-en-forma-de-l-con-almacenamiento-reversible-negro-_JM"},
     {"name": "Escritorio en L 5 cajones", "url": "https://articulo.mercadolibre.com.mx/MLM-2215533921-envio-gratis-escritorio-moderno-oficina-en-l-con-5-cajones-_JM"},
 ]
 
