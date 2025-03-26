@@ -24,7 +24,7 @@ jobs:
         run: date
 
       - name: Configurar credenciales
-        run: echo '${{ secrets.GOOGLE_CREDENTIALS }}' | base64 --decode > credentials.json
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS }}' > credentials.json
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
