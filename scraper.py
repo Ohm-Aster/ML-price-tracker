@@ -1,84 +1,89 @@
-import requests
-from bs4 import BeautifulSoup
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import time
 import json
-import os
+import logging
 from datetime import datetime
 
-# Configuración de Google Sheets
-SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS")
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
-if not CREDENTIALS_JSON:
-    raise ValueError("❌ ERROR: La variable de entorno GOOGLE_CREDENTIALS no está configurada.")
+# Configuración del logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-credentials = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(CREDENTIALS_JSON), SCOPES)
-client = gspread.authorize(credentials)
-spreadsheet = client.open("resultados tracking").sheet1
+# ===== FUNCIONES =====
 
-# Lista de productos
-products = [
-    {"name": "Escritorio Negro en L", "url": "https://articulo.mercadolibre.com.mx/MLM-2008013683-escritorio-en-forma-de-l-con-almacenamiento-reversible-negro-_JM"},
-    {"name": "Escritorio en L 5 cajones", "url": "https://articulo.mercadolibre.com.mx/MLM-2215533921-envio-gratis-escritorio-moderno-oficina-en-l-con-5-cajones-_JM"},
-]
+def autenticar_google_sheets():
+    SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    with open("credentials.json") as f:
+        creds_data = json.load(f)
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_data, SCOPES)
+    client = gspread.authorize(credentials)
+    sheet = client.open("resultados tracking").sheet1
+    return sheet
 
-# Headers y configuración
-HEADERS_LIST = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-]
+def iniciar_driver():
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    return driver
 
-def get_price(url):
-    """Obtiene el precio del producto en Mercado Libre."""
-    for _ in range(3):  # Reintentar hasta 3 veces
-        try:
-            headers = {"User-Agent": HEADERS_LIST[_ % len(HEADERS_LIST)]}
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, "html.parser")
-            price_element = soup.select_one("span.andes-money-amount__fraction")
-            
-            if price_element:
-                return price_element.text.strip()
-        except requests.RequestException as e:
-            print(f"⚠️ Error en {url}: {e}")
-        time.sleep(5)
-    
-    return None
+def extraer_ofertas(driver):
+    url = "https://www.mercadolibre.com.mx/ofertas#nav-header"
+    driver.get(url)
+    time.sleep(3)  # Espera para carga completa
 
-def already_tracked(product_name, url):
-    """Verifica si el producto ya está registrado."""
-    try:
-        records = spreadsheet.get_all_records()
-        for row in records:
-            if row.get("Nombre") == product_name and row.get("URL") == url:
-                return True
-    except Exception as e:
-        print(f"⚠️ No se pudo verificar registros previos: {e}")
-    return False
+    productos = []
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-# Procesar cada producto
-for product in products:
-    print(f"\n🔍 Buscando precio para '{product['name']}'...")
-    
-    if already_tracked(product["name"], product["url"]):
-        print(f"⚠️ '{product['name']}' ya registrado. Saltando...")
-        continue
+    items = driver.find_elements(By.CSS_SELECTOR, 'a.poly-component__title')
+    precios_actuales = driver.find_elements(By.CSS_SELECTOR, 'div.poly-price__current span.andes-money-amount__fraction')
+    precios_anteriores = driver.find_elements(By.CSS_SELECTOR, 's.andes-money-amount--previous span.andes-money-amount__fraction')
 
-    price = get_price(product["url"])
-    
-    if price:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"✅ Precio obtenido: {price} MXN")
-        spreadsheet.append_row([product["name"], product["url"], price, timestamp])
+    for i in range(len(items)):
+        nombre = items[i].text.strip()
+        enlace = items[i].get_attribute("href")
+        precio_actual = precios_actuales[i].text if i < len(precios_actuales) else "No disponible"
+        precio_anterior = precios_anteriores[i].text if i < len(precios_anteriores) else "Sin descuento"
+
+        productos.append([timestamp, nombre, precio_actual, precio_anterior, enlace])
+        logging.info(f"{nombre} - {precio_actual} MXN (antes: {precio_anterior})")
+
+    return productos
+
+def guardar_en_sheets(sheet, datos):
+    if datos:
+        sheet.append_rows(datos)
+        logging.info(f"📌 {len(datos)} productos guardados en Google Sheets.")
     else:
-        print(f"⚠️ No se encontró precio para '{product['name']}'.")
+        logging.warning("No se encontraron productos para guardar.")
 
-    time.sleep(5)  # Espera para evitar bloqueos
+# ===== EJECUCIÓN PRINCIPAL =====
 
-print("\n✅ Proceso finalizado.")
+def main():
+    hoja = autenticar_google_sheets()
+    
+    while True:
+        logging.info("🔍 Iniciando proceso de scraping...")
+        driver = iniciar_driver()
 
-time.sleep(60)  # Espera para evitar bloqueos
+        try:
+            productos = extraer_ofertas(driver)
+            guardar_en_sheets(hoja, productos)
+        except Exception as e:
+            logging.error(f"❌ Error durante scraping: {e}")
+        finally:
+            driver.quit()
+            logging.info("🚗 Navegador cerrado.")
+
+        logging.info("😴 Pausando por 5 horas antes del próximo intento...\n")
+        time.sleep(5 * 60 * 60)  # 5 horas en segundos
+
+if __name__ == "__main__":
+    logging.info("🚀 Script de ofertas iniciado por Ohm-Aster.")
+    main()
